@@ -1,0 +1,68 @@
+/* css/tokens.css */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Manrope:wght@300;400;500;600&display=swap');
+
+:root {
+    /* Royal Color Palette */
+    --color-bg: #F8F3E8; /* Warm Ivory */
+    --color-bg-alt: #EFE3CC; /* Champagne Cream */
+    --color-card: #E7D7BC; /* Soft Beige */
+    
+    --color-royal: #5A1F2B; /* Deep Royal Maroon */
+    --color-royal-dark: #722F3F; /* Wine / Burgundy */
+    
+    --color-gold: #B68A3A; /* Antique Gold */
+    --color-gold-light: #D8B96A;
+    
+    --color-text: #2F2522; /* Deep Brown */
+    --color-text-muted: #6F625B; /* Secondary text */
+    
+    --color-white: #FFFFFF;
+    --color-border: rgba(182, 138, 58, 0.3); /* Gold border */
+    
+    /* Typography */
+    --font-heading: 'Cormorant Garamond', serif;
+    --font-body: 'Manrope', sans-serif;
+    
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 2rem;
+    --text-4xl: 2.5rem;
+    --text-5xl: 3.5rem;
+    --text-6xl: 4.5rem;
+    --text-7xl: 6rem;
+    
+    /* Spacing */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-24: 6rem;
+    --space-32: 8rem;
+    
+    /* Layout */
+    --container-width: 1200px;
+    --container-narrow: 800px;
+    
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    
+    /* Transitions */
+    --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* Z-index */
+    --z-nav: 100;
+    --z-modal: 200;
+    --z-toast: 300;
+}

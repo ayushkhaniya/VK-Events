@@ -1,0 +1,99 @@
+/* css/pages/services.css */
+.services-hero {
+    padding: var(--space-32) 0 var(--space-16);
+    text-align: center;
+    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-bg-alt);
+}
+.services-hero h1 {
+    font-size: clamp(3rem, 5vw, 5rem);
+    margin-bottom: var(--space-6);
+    color: var(--color-royal);
+}
+.services-hero p {
+    font-size: var(--text-lg);
+    color: var(--color-text-muted);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.service-block {
+    padding: var(--space-24) 0;
+    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-bg);
+    scroll-margin-top: 100px;
+    transition: background-color var(--transition-slow);
+}
+.service-block:target {
+    animation: targetServiceHighlight 2.5s ease-out;
+}
+@keyframes targetServiceHighlight {
+    0% {
+        background-color: rgba(197, 160, 89, 0.22);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+.service-block:nth-child(even) {
+    background-color: var(--color-bg-alt);
+}
+.service-block:last-child {
+    border-bottom: none;
+}
+.service-block__inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-12);
+}
+@media (min-width: 1024px) {
+    .service-block__inner { grid-template-columns: 1fr 1fr; }
+}
+.service-block__meta {
+    position: sticky;
+    top: 100px;
+    align-self: start;
+}
+.service-block__num {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-gold);
+    margin-bottom: var(--space-4);
+    display: block;
+    font-weight: 600;
+}
+.service-block__title {
+    font-size: var(--text-4xl);
+    margin-bottom: var(--space-4);
+    color: var(--color-royal);
+}
+.service-block__desc {
+    color: var(--color-text-muted);
+    font-size: var(--text-lg);
+}
+
+.service-block__image {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(182, 138, 58, 0.4);
+    border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(90, 31, 43, 0.08);
+}
+.service-block__image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    aspect-ratio: 4/3;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.service-block:hover .service-block__image img {
+    transform: scale(1.02);
+}
+.service-block__details {
+    margin-top: var(--space-6);
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    line-height: 1.6;
+}
