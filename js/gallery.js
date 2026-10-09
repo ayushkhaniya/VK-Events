@@ -109,30 +109,54 @@ class Gallery {
         });
     }
 
-    // ── Bento Grid Span: Large (2×2) or Normal (1×1) ─────
+    // ── Bento Grid Span: hero (2×2) | wide (2×1) | tall (1×2) | normal (1×1) ─
     getBentoSpanClass(media, index) {
-        // If span was already determined and stored
-        if (media.spanType === 'large') return 'gallery-item--large';
+        // Honour stored spanType from server
+        if (media.spanType === 'hero')   return 'gallery-item--hero';
+        if (media.spanType === 'wide')   return 'gallery-item--wide';
+        if (media.spanType === 'tall')   return 'gallery-item--tall';
+        if (media.spanType === 'large')  return 'gallery-item--hero'; // legacy alias
         if (media.spanType === 'normal') return 'gallery-item--normal';
 
-        // Featured items are always large
-        if (media.featured || media.isFeatured) return 'gallery-item--large';
+        // Featured items are always heroes
+        if (media.featured || media.isFeatured) return 'gallery-item--hero';
 
-        // Determine from aspect ratio if available
+        // Compute from aspect ratio + position
         if (media.aspectRatio) {
             return `gallery-item--${this.computeSpanFromRatio(media.aspectRatio, index)}`;
         }
 
-        // Fallback: every 5th item is large (5th, 10th...), rest are normal
-        return ((index + 1) % 5 === 0) ? 'gallery-item--large' : 'gallery-item--normal';
+        // Fallback positional rhythm
+        return `gallery-item--${this.computeSpanFromRatio(1.0, index)}`;
     }
 
+    /**
+     * Bento rhythm — assigns tile size based on aspect ratio + position.
+     *
+     * Rhythm pattern (repeating every 12 tiles):
+     *   0  → hero   (2×2 anchor)
+     *   3  → wide   (2×1 breathing room)
+     *   7  → tall   (1×2 vertical accent)
+     *   11 → wide   (2×1 breathing room)
+     *   others → determined by ratio
+     *
+     * Ratio rules:
+     *   ratio < 0.75  → tall  (portrait)
+     *   ratio > 1.45  → wide  (landscape)
+     *   otherwise     → normal (square-ish)
+     */
     computeSpanFromRatio(ratio, index = 0) {
-        // Every 5th item is large (5th, 10th, 15th...)
-        if ((index + 1) % 5 === 0) return 'large';
-        // Landscape images (ratio > 1.25): alternate into large heroes so they don't stack full-width
-        if (ratio > 1.25 && index % 2 === 1) return 'large';
-        // Everything else is normal (1 col × 1 row, exactly 2 per row on 360px mobile)
+        const pos = index % 12;
+
+        // Positional anchors take priority
+        if (pos === 0)  return 'hero';
+        if (pos === 3)  return 'wide';
+        if (pos === 7)  return 'tall';
+        if (pos === 11) return 'wide';
+
+        // Ratio-based assignment
+        if (ratio < 0.75)  return 'tall';   // portrait
+        if (ratio > 1.45)  return 'wide';   // landscape
         return 'normal';
     }
 
@@ -205,7 +229,7 @@ class Gallery {
                     if (img.naturalWidth && img.naturalHeight) {
                         const ratio = img.naturalWidth / img.naturalHeight;
                         const span = this.computeSpanFromRatio(ratio, index);
-                        item.classList.remove('gallery-item--normal', 'gallery-item--large');
+                        item.classList.remove('gallery-item--normal', 'gallery-item--tall', 'gallery-item--wide', 'gallery-item--hero', 'gallery-item--large');
                         item.classList.add(`gallery-item--${span}`);
                     }
                 });
@@ -383,10 +407,11 @@ class Gallery {
             const category = modal.querySelector('#add-category').value;
 
             try {
-                // Calculate aspect ratio and Bento span for each file to ensure layout integration
+                // Calculate aspect ratio and Bento span for each file
                 const metaList = [];
                 for (let i = 0; i < pendingFiles.length; i++) {
                     const ratio = await getFileAspectRatio(pendingFiles[i]);
+                    // Use the new 4-tier span system; treat new uploads as index continuation
                     const spanType = this.computeSpanFromRatio(ratio, this.allMedia.length + i);
                     metaList.push({
                         aspectRatio: Math.round(ratio * 100) / 100,
