@@ -37,8 +37,8 @@ if (isCloudinaryConfigured) {
     console.log('📁 Cloudinary credentials not detected. Falling back to local disk storage in /uploads');
 }
 
-// Helper: Stream buffer directly to Cloudinary
-function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLDER) {
+// Helper: Stream buffer directly to Cloudinary with metadata context
+function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLDER, meta = {}) {
     return new Promise((resolve, reject) => {
         const ext = path.extname(originalname).toLowerCase();
         const safeBase = path.basename(originalname, ext)
@@ -53,7 +53,15 @@ function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLD
                 folder: folder,
                 public_id: publicId,
                 resource_type: 'image',
-                overwrite: true
+                overwrite: true,
+                context: {
+                    category: meta.category || 'Other',
+                    spanType: meta.spanType || 'normal',
+                    aspectRatio: String(meta.aspectRatio || ''),
+                    originalName: originalname,
+                    customId: meta.customId || ('media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8))
+                },
+                tags: meta.category ? [meta.category.replace(/[^a-zA-Z0-9]/g, '_')] : []
             },
             (error, result) => {
                 if (error) return reject(error);
@@ -155,6 +163,130 @@ const upload = multer({
     limits: { fileSize: 30 * 1024 * 1024 } // 30 MB max
 });
 
+// ── Category Mapping & Cloudinary Media Fetching ──────────────
+const KNOWN_CATEGORIES = [
+    'Birthday',
+    'Anniversary',
+    'Baby Welcome',
+    'Haldi & Mehendi',
+    'Religious & Pooja',
+    'Ring Ceremony',
+    'Shop Decoration',
+    'Event Entry',
+    'Our Inventory',
+    'Other'
+];
+
+function inferCategoryFromPublicId(publicId) {
+    const lower = (publicId || '').toLowerCase();
+    for (const cat of KNOWN_CATEGORIES) {
+        const cleanCat = cat.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cleanPublic = lower.replace(/[^a-z0-9]/g, '');
+        if (cleanPublic.includes(cleanCat)) {
+            return cat;
+        }
+    }
+    if (lower.includes('anniversay') || lower.includes('anniversary')) return 'Anniversary';
+    if (lower.includes('birthday') || lower.includes('bday')) return 'Birthday';
+    if (lower.includes('ring')) return 'Ring Ceremony';
+    if (lower.includes('entry')) return 'Event Entry';
+    if (lower.includes('haldi') || lower.includes('mehendi')) return 'Haldi & Mehendi';
+    if (lower.includes('baby')) return 'Baby Welcome';
+    if (lower.includes('shop')) return 'Shop Decoration';
+    if (lower.includes('pooja') || lower.includes('religious')) return 'Religious & Pooja';
+    return 'Other';
+}
+
+// In-memory caching for Cloudinary resources (prevents hitting API rate limits on every page load)
+let mediaCache = null;
+let mediaCacheTimestamp = 0;
+const CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
+function invalidateMediaCache() {
+    mediaCache = null;
+    mediaCacheTimestamp = 0;
+}
+
+async function getGalleryMedia() {
+    if (!isCloudinaryConfigured) {
+        return readDb();
+    }
+
+    const now = Date.now();
+    if (mediaCache && (now - mediaCacheTimestamp < CACHE_TTL_MS)) {
+        return mediaCache;
+    }
+
+    try {
+        const localDb = readDb();
+        const localMap = new Map();
+        localDb.forEach(item => {
+            if (item.cloudinaryPublicId) {
+                localMap.set(item.cloudinaryPublicId, item);
+            }
+        });
+
+        const res = await cloudinary.api.resources({
+            type: 'upload',
+            prefix: CLOUDINARY_FOLDER,
+            max_results: 500,
+            context: true,
+            tags: true,
+            direction: 'desc'
+        });
+
+        const cldItems = (res.resources || []).map(r => {
+            const ctx = (r.context && r.context.custom) || r.context || {};
+            const localMeta = localMap.get(r.public_id) || {};
+
+            const category = ctx.category || localMeta.category || inferCategoryFromPublicId(r.public_id);
+            const spanType = ctx.spanType || localMeta.spanType || 'normal';
+            let aspectRatio = ctx.aspectRatio ? parseFloat(ctx.aspectRatio) : localMeta.aspectRatio;
+            if (!aspectRatio && r.width && r.height) {
+                aspectRatio = Math.round((r.width / r.height) * 100) / 100;
+            }
+
+            const optUrl = cloudinary.url(r.public_id, {
+                secure: true,
+                quality: 'auto',
+                fetch_format: 'auto'
+            });
+
+            return {
+                id: ctx.customId || localMeta.id || ('cld_' + r.asset_id),
+                category: category,
+                filename: localMeta.filename || path.basename(r.public_id),
+                originalName: ctx.originalName || localMeta.originalName || path.basename(r.public_id),
+                type: 'image',
+                src: optUrl,
+                srcFull: r.secure_url || optUrl,
+                cloudinaryPublicId: r.public_id,
+                storageType: 'cloudinary',
+                spanType: spanType,
+                aspectRatio: aspectRatio,
+                size: r.bytes,
+                mimetype: r.format ? `image/${r.format}` : 'image/jpeg',
+                featured: spanType === 'large',
+                isStatic: false,
+                createdAt: localMeta.createdAt || new Date(r.created_at).getTime()
+            };
+        });
+
+        // Any local-only items not on Cloudinary (e.g. legacy local uploads)
+        const localOnly = localDb.filter(i => !i.cloudinaryPublicId && i.storageType !== 'cloudinary');
+
+        const merged = [...cldItems, ...localOnly];
+        merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        mediaCache = merged;
+        mediaCacheTimestamp = now;
+        return merged;
+    } catch (err) {
+        console.warn('Could not query Cloudinary API resources, falling back to local database:', err.message);
+        return readDb();
+    }
+}
+
 // ── API Routes ───────────────────────────────────────────────
 
 // 1. Health check
@@ -172,10 +304,10 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// 2. GET /api/media — fetch all permanent uploaded images
-app.get('/api/media', (req, res) => {
+// 2. GET /api/media — fetch all permanent uploaded images (persisted across deploys)
+app.get('/api/media', async (req, res) => {
     try {
-        const items = readDb();
+        const items = await getGalleryMedia();
         res.json({ success: true, data: items });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -223,7 +355,14 @@ app.post('/api/upload', (req, res, next) => {
 
                 if (isCloudinaryConfigured) {
                     try {
-                        const cldResult = await uploadBufferToCloudinary(file.buffer, file.originalname);
+                        const customId = 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                        const cldResult = await uploadBufferToCloudinary(file.buffer, file.originalname, CLOUDINARY_FOLDER, {
+                            category,
+                            spanType,
+                            aspectRatio,
+                            customId
+                        });
+
                         cloudinaryPublicId = cldResult.public_id;
                         storageType = 'cloudinary';
                         fileSize = cldResult.bytes || file.size;
@@ -287,6 +426,7 @@ app.post('/api/upload', (req, res, next) => {
             }
 
             writeDb(currentDb);
+            invalidateMediaCache();
 
             res.json({
                 success: true,
@@ -309,11 +449,13 @@ app.post('/api/media/delete', async (req, res) => {
         }
 
         const currentDb = readDb();
+        const activeItems = await getGalleryMedia();
         let deletedCount = 0;
         const remainingDb = [];
 
-        for (const item of currentDb) {
-            if (ids.includes(item.id)) {
+        for (const item of activeItems) {
+            const isMatch = ids.includes(item.id) || ids.includes(item.cloudinaryPublicId);
+            if (isMatch) {
                 // Delete from Cloudinary if stored there
                 if (item.cloudinaryPublicId) {
                     try {
@@ -335,12 +477,18 @@ app.post('/api/media/delete', async (req, res) => {
                     }
                 }
                 deletedCount++;
-            } else {
+            }
+        }
+
+        // Also clean local DB
+        for (const item of currentDb) {
+            if (!ids.includes(item.id) && !ids.includes(item.cloudinaryPublicId)) {
                 remainingDb.push(item);
             }
         }
 
         writeDb(remainingDb);
+        invalidateMediaCache();
 
         res.json({
             success: true,
