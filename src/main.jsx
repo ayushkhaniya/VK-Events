@@ -4,16 +4,16 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 
-// Import exact original CSS stylesheets
-import '../css/tokens.css';
-import '../css/global.css';
-import '../css/components.css';
-import '../css/pages/home.css';
-import '../css/pages/work.css';
-import '../css/pages/services.css';
-import '../css/pages/pricing.css';
-import '../css/pages/about.css';
-import '../css/pages/contact.css';
+// Import stylesheet design system & page styles
+import './styles/tokens.css';
+import './styles/global.css';
+import './styles/components.css';
+import './styles/pages/home.css';
+import './styles/pages/work.css';
+import './styles/pages/services.css';
+import './styles/pages/pricing.css';
+import './styles/pages/about.css';
+import './styles/pages/contact.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
