@@ -190,7 +190,14 @@ export async function uploadMediaFiles(files, category, onProgress, metaList = [
       } else if (xhr.status === 405) {
         reject(new Error(`HTTP 405 Method Not Allowed. Please ensure the backend server is running (node server.js) and accessible at ${API_BASE || 'localhost:3000'}.`));
       } else {
-        reject(new Error(`Server error: HTTP ${xhr.status}`));
+        let msg = `Server error: HTTP ${xhr.status}`;
+        try {
+          const errData = JSON.parse(xhr.responseText);
+          if (errData && errData.error) {
+            msg = errData.error;
+          }
+        } catch (_) {}
+        reject(new Error(msg));
       }
     };
 

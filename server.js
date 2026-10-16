@@ -17,7 +17,8 @@ const isCloudinaryConfigured = Boolean(
     (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
 );
 
-const CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER || 'vk-events';
+const rawFolder = (process.env.CLOUDINARY_FOLDER || 'vk-events').toString().trim().replace(/[\s/]+$/, '');
+const CLOUDINARY_FOLDER = rawFolder || 'vk-events';
 
 if (isCloudinaryConfigured) {
     if (process.env.CLOUDINARY_URL) {
@@ -34,12 +35,13 @@ if (isCloudinaryConfigured) {
     }
     console.log(`☁️  Cloudinary configured: ${cloudinary.config().cloud_name || 'Active'} (Folder: ${CLOUDINARY_FOLDER})`);
 } else {
-    console.log('📁 Cloudinary credentials not detected. Falling back to local disk storage in /uploads');
+    console.log('📁 Cloudinary credentials not detected.');
 }
 
 // Helper: Stream buffer directly to Cloudinary with metadata context
 function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLDER, meta = {}) {
     return new Promise((resolve, reject) => {
+        const cleanFolder = (folder || CLOUDINARY_FOLDER || 'vk-events').toString().trim().replace(/[\s/]+$/, '') || 'vk-events';
         const ext = path.extname(originalname).toLowerCase();
         const safeBase = path.basename(originalname, ext)
             .toLowerCase()
@@ -50,7 +52,7 @@ function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLD
 
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                folder: folder,
+                folder: cleanFolder,
                 public_id: publicId,
                 resource_type: 'image',
                 overwrite: true,
@@ -282,13 +284,12 @@ app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         uptime: process.uptime(),
-        storage: isCloudinaryConfigured ? 'cloudinary' : 'local',
+        storage: isCloudinaryConfigured ? 'cloudinary' : 'database-only',
         cloudinary: {
             configured: isCloudinaryConfigured,
             cloudName: isCloudinaryConfigured ? (cloudinary.config().cloud_name || 'configured') : null,
             folder: CLOUDINARY_FOLDER
-        },
-        uploadDir: UPLOAD_DIR
+        }
     });
 });
 
@@ -512,7 +513,7 @@ app.listen(PORT, '0.0.0.0', () => {
     if (isCloudinaryConfigured) {
         console.log(`║  Storage Mode   : ☁️  Cloudinary (${cloudinary.config().cloud_name || 'Active'}) ║`);
     } else {
-        console.log(`║  Storage Mode   : 📁 Local Disk (${UPLOAD_DIR}) ║`);
+        console.log(`║  Storage Mode   : 📁 Database Fallback Mode                   ║`);
     }
     console.log('╚════════════════════════════════════════════════════════════╝\n');
 });
