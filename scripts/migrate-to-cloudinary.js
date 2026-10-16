@@ -112,7 +112,15 @@ async function migrate() {
             const result = await cloudinary.uploader.upload(localPath, {
                 folder: CLOUDINARY_FOLDER,
                 public_id: publicId,
-                resource_type: 'image'
+                resource_type: 'image',
+                context: {
+                    category: item.category || 'Other',
+                    spanType: item.spanType || 'normal',
+                    aspectRatio: String(item.aspectRatio || ''),
+                    originalName: item.originalName || localFilename,
+                    customId: item.id || ('media_' + Date.now())
+                },
+                tags: item.category ? [item.category.replace(/[^a-zA-Z0-9]/g, '_')] : []
             });
 
             item.cloudinaryPublicId = result.public_id;

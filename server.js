@@ -74,10 +74,6 @@ function uploadBufferToCloudinary(buffer, originalname, folder = CLOUDINARY_FOLD
 }
 
 // ── Directory Setup ──────────────────────────────────────────
-// On Render: use the persistent disk mounted at /opt/render/project/storage
-// Locally: fall back to the project-relative uploads/ and data/ folders
-// Set PERSISTENT_STORAGE_PATH in Render's environment variables if the
-// default mount path ever changes.
 const STORAGE_ROOT = process.env.PERSISTENT_STORAGE_PATH || (
     // Auto-detect Render's default persistent disk mount path
     require('fs').existsSync('/opt/render/project/storage')
@@ -85,17 +81,12 @@ const STORAGE_ROOT = process.env.PERSISTENT_STORAGE_PATH || (
         : null
 ) || path.join(__dirname);
 
-const UPLOAD_DIR = path.join(STORAGE_ROOT, 'uploads');
-const DATA_DIR   = path.join(STORAGE_ROOT, 'data');
-const DB_FILE    = path.join(DATA_DIR, 'gallery-db.json');
+const DATA_DIR = path.join(STORAGE_ROOT, 'data');
+const DB_FILE  = path.join(DATA_DIR, 'gallery-db.json');
 
 console.log(`📁 Storage root : ${STORAGE_ROOT}`);
-console.log(`🖼  Upload dir   : ${UPLOAD_DIR}`);
 console.log(`🗄  Database     : ${DB_FILE}`);
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -111,9 +102,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve uploaded images statically (for local fallback / legacy photos)
-app.use('/uploads', express.static(UPLOAD_DIR));
 
 // Serve website static files (built Vite bundle in dist)
 const DIST_DIR = path.join(__dirname, 'dist');
@@ -353,65 +341,55 @@ app.post('/api/upload', (req, res, next) => {
                 let storageType = 'local';
                 let fileSize = file.size;
 
-                if (isCloudinaryConfigured) {
-                    try {
-                        const customId = 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-                        const cldResult = await uploadBufferToCloudinary(file.buffer, file.originalname, CLOUDINARY_FOLDER, {
-                            category,
-                            spanType,
-                            aspectRatio,
-                            customId
-                        });
-
-                        cloudinaryPublicId = cldResult.public_id;
-                        storageType = 'cloudinary';
-                        fileSize = cldResult.bytes || file.size;
-
-                        // Cloudinary auto-optimization URL for regular display
-                        srcUrl = cloudinary.url(cldResult.public_id, {
-                            secure: true,
-                            quality: 'auto',
-                            fetch_format: 'auto'
-                        });
-                        // Original full resolution for lightbox / full view
-                        srcFullUrl = cldResult.secure_url || srcUrl;
-
-                        // Calculate exact aspect ratio if available from Cloudinary
-                        if (cldResult.width && cldResult.height) {
-                            aspectRatio = Math.round((cldResult.width / cldResult.height) * 100) / 100;
-                        }
-                    } catch (cldErr) {
-                        console.error('Cloudinary upload failed, falling back to local disk:', cldErr.message);
-                    }
+                if (!isCloudinaryConfigured) {
+                    return res.status(500).json({
+                        success: false,
+                        error: 'Cloudinary storage is required. Please check your CLOUDINARY credentials.'
+                    });
                 }
 
-                // If not using Cloudinary or if Cloudinary upload failed, save to local disk
-                if (!cloudinaryPublicId) {
-                    const ext = path.extname(file.originalname).toLowerCase();
-                    const safeBase = path.basename(file.originalname, ext)
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]/g, '-')
-                        .slice(0, 30);
-                    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e6);
-                    filename = `${safeBase || 'event'}-${uniqueSuffix}${ext}`;
-                    const destPath = path.join(UPLOAD_DIR, filename);
-                    fs.writeFileSync(destPath, file.buffer);
+                let cldResult;
+                try {
+                    const customId = 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                    cldResult = await uploadBufferToCloudinary(file.buffer, file.originalname, CLOUDINARY_FOLDER, {
+                        category,
+                        spanType,
+                        aspectRatio,
+                        customId
+                    });
+                } catch (cldErr) {
+                    console.error('Cloudinary upload failed:', cldErr.message);
+                    return res.status(500).json({ success: false, error: `Cloudinary upload failed: ${cldErr.message}` });
+                }
 
-                    srcUrl = `/uploads/${filename}`;
-                    srcFullUrl = `/uploads/${filename}`;
-                    storageType = 'local';
+                cloudinaryPublicId = cldResult.public_id;
+                storageType = 'cloudinary';
+                fileSize = cldResult.bytes || file.size;
+
+                // Cloudinary auto-optimization URL for regular display
+                srcUrl = cloudinary.url(cldResult.public_id, {
+                    secure: true,
+                    quality: 'auto',
+                    fetch_format: 'auto'
+                });
+                // Original full resolution for lightbox / full view
+                srcFullUrl = cldResult.secure_url || srcUrl;
+
+                // Calculate exact aspect ratio if available from Cloudinary
+                if (cldResult.width && cldResult.height) {
+                    aspectRatio = Math.round((cldResult.width / cldResult.height) * 100) / 100;
                 }
 
                 const item = {
                     id: 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
                     category: category,
-                    filename: filename || file.originalname,
+                    filename: file.originalname,
                     originalName: file.originalname,
                     type: 'image',
                     src: srcUrl,
                     srcFull: srcFullUrl,
                     cloudinaryPublicId: cloudinaryPublicId,
-                    storageType: storageType,
+                    storageType: 'cloudinary',
                     spanType: spanType,
                     aspectRatio: aspectRatio,
                     size: fileSize,
@@ -440,7 +418,7 @@ app.post('/api/upload', (req, res, next) => {
     });
 });
 
-// 4. POST /api/media/delete — permanently delete images from Cloudinary, disk & DB
+// 4. POST /api/media/delete — permanently delete images from Cloudinary & DB
 app.post('/api/media/delete', async (req, res) => {
     try {
         const { ids } = req.body;
@@ -456,7 +434,7 @@ app.post('/api/media/delete', async (req, res) => {
         for (const item of activeItems) {
             const isMatch = ids.includes(item.id) || ids.includes(item.cloudinaryPublicId);
             if (isMatch) {
-                // Delete from Cloudinary if stored there
+                // Delete from Cloudinary
                 if (item.cloudinaryPublicId) {
                     try {
                         await cloudinary.uploader.destroy(item.cloudinaryPublicId);
@@ -464,23 +442,11 @@ app.post('/api/media/delete', async (req, res) => {
                         console.warn(`Could not delete Cloudinary image ${item.cloudinaryPublicId}:`, cldErr.message);
                     }
                 }
-
-                // Remove file from disk if local filename exists
-                if (item.filename) {
-                    const filePath = path.join(UPLOAD_DIR, item.filename);
-                    if (fs.existsSync(filePath)) {
-                        try {
-                            fs.unlinkSync(filePath);
-                        } catch (unlinkErr) {
-                            console.warn(`Could not delete local file ${filePath}:`, unlinkErr.message);
-                        }
-                    }
-                }
                 deletedCount++;
             }
         }
 
-        // Also clean local DB
+        // Clean local DB
         for (const item of currentDb) {
             if (!ids.includes(item.id) && !ids.includes(item.cloudinaryPublicId)) {
                 remainingDb.push(item);
